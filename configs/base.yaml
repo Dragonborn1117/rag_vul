@@ -1,0 +1,13 @@
+analysis:
+  model: "llama3"
+  temperature: 0
+  format: "json"
+  num_ctx: 8192
+embedding:
+  model: "nomic-embed-text"
+mutation:
+  model: "llama3"
+  temperature: 1
+  format: "json"
+
+
