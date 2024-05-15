@@ -110,7 +110,7 @@ def with_rag(model_local, code_content, retriever):
     answer = after_rag_chain.invoke(question)
     print(answer)
     
-    after_test_result = r"after_rag_result.json"
+    after_test_result = r"results/after_rag_result.json"
     with open(after_test_result, "a") as f:
         json.dump(answer, f, indent=4)
 

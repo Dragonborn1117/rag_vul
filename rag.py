@@ -94,7 +94,7 @@ def without_rag(model_local, code_content):
     before_rag_chain = before_rag_chain.with_retry()
     answer = before_rag_chain.invoke()
     
-    before_test_result = r"before_rag_result.json"
+    before_test_result = r"results/before_rag_result.json"
     with open(before_test_result, "a") as f:
         json.dump(answer, f, indent=4)
 
@@ -124,7 +124,7 @@ def with_rag(model_local, code_content, retriever):
     answer = after_rag_chain.invoke(question)
     print(answer)
     
-    after_test_result = r"after_rag_result.json"
+    after_test_result = r"results/after_rag_result.json"
     with open(after_test_result, "a") as f:
         json.dump(answer, f, indent=4)
 
