@@ -110,7 +110,6 @@ def with_rag(model_local, code_content, retriever):
         }
     )       
     
-    
     message = """You are an expert at finding vulnerability in code. \
                 Given a question, return a list of ONLY FIVE results optimized to retrieve the most relevant results.
                 If there are acronyms or words you are not familiar with, do not try to rephrase them.
