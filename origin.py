@@ -34,7 +34,7 @@ def main(args):
     with open(content_path, "r") as f:
         page_content = f.read()
         
-    code_path = r"service.c"
+    code_path = r"testcase/service.c"
     with open(code_path, "r") as f:
         code_content = f.read()
 

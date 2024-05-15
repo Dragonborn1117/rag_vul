@@ -1,3 +1,6 @@
 .vscode/
 darpa/
-test/
+dataset/
+testcase/
+after_rag_result.json
+before_rag_result.json

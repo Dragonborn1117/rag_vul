@@ -1,8 +1,7 @@
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings.ollama import OllamaEmbeddings
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.prompts import PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_community.chat_models import ChatOllama
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -12,9 +11,9 @@ import argparse
 from omegaconf import OmegaConf
 import json
 import re
+import os
 import pandas as pd
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain.output_parsers import OutputFixingParser
 
 class Jsonoutput(BaseModel):
     result: str = Field(description="whether vulnerability exists in following code, if exist answer True, otherwise answer False.")
@@ -59,18 +58,23 @@ def vector_embedding(page_content, conf):
     
     return retriever
 
-def read_one_doc() -> str:
+def read_doc() -> str:
     random_list = []
+    set_random_num = 1
     content = ''
-    doc_path = r"test/doc/0.md"
+    doc_path = r"dataset/doc"
     
-    random_list.append(doc_path)
+    for doc in os.listdir(doc_path):
+        print(f"traverse documents {doc}...")
+        path = os.path.join(doc_path, doc)
+        random_list.append(path)
+        # random.shuffle(random_list)
     
-
-    print(f"reading documents")
-    with open(doc_path, "r") as f:
-        page_content = f.read()
-        content += page_content
+    for i in range(set_random_num):
+        print(f"reading documents {random_list[i]}...")
+        with open(random_list[i], "r") as f:
+            page_content = f.read()
+            content += page_content
     
     return content
 
@@ -78,9 +82,11 @@ def with_rag(model_local, code_content, retriever):
     parser = JsonOutputParser(pydantic_object=Jsonoutput)
        
     
-    # system = """"You are an expert at finding vulnerability in code. \
-    #             Given a question, return a list of results optimized to retrieve the most relevant results.
-    #             If there are acronyms or words you are not familiar with, do not try to rephrase them."""
+    message = """You are an expert at finding vulnerability in code. \
+                Given a question, return a list of ONLY FIVE results optimized to retrieve the most relevant results.
+                If there are acronyms or words you are not familiar with, do not try to rephrase them.
+                Answer the question based on the following context:{context} 
+                Question:{question}"""
                 
     # after_rag_prompt = ChatPromptTemplate.from_messages(
     #     [
@@ -89,8 +95,7 @@ def with_rag(model_local, code_content, retriever):
     #     ]
     # )
     
-    after_rag_template = "Answer the question based on the following context:{context} Question:{question}"
-    after_rag_prompt = ChatPromptTemplate.from_template(after_rag_template)
+    after_rag_prompt = ChatPromptTemplate.from_template(message)
     
     setup_and_retrieval = RunnableParallel(
         {
@@ -100,10 +105,9 @@ def with_rag(model_local, code_content, retriever):
     )    
         
     question = "What type of vulnerability exists in the following code?\n" + code_content
-    after_rag_chain = setup_and_retrieval | after_rag_prompt | model_local | JsonOutputParser
-    # after_rag_chain = after_rag_chain.with_retry()
-    # answer = after_rag_chain.invoke({"question": question})
-    answer = after_rag_chain.invoke({"topic" : "vulnerability", "code": code_content})
+    after_rag_chain = setup_and_retrieval | after_rag_prompt | model_local | parser
+    after_rag_chain = after_rag_chain.with_retry()
+    answer = after_rag_chain.invoke(question)
     print(answer)
     
     after_test_result = r"after_rag_result.json"
@@ -132,12 +136,9 @@ def main(args):
         
     conf = OmegaConf.load(args.config)
     
-    model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx)
-    
     signal.signal(signal.SIGALRM, timeout_handler)
     
-
-    page_content = read_one_doc()
+    page_content = read_doc()
     print("read docucments complete")
     
     retriever = vector_embedding(page_content, conf)
@@ -145,7 +146,7 @@ def main(args):
     print("retrieve complete...")
     
     data = []
-    with open('test/code/primevul_test.json', 'r') as file:
+    with open('dataset/code/primevul_test.json', 'r') as file:
         for line in file:
             json_obj = json.loads(line)
             data.append(json_obj)
