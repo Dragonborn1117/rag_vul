@@ -20,14 +20,15 @@ def use_gpu(used_percentage=0.5):
                 out += "," + str(i)
     nvmlShutdown()
     
-    if out == "":
-        print("It is not a good time!")
-        sys.exit(-1)
-    
     return out
 
 def set_rtx():
-    os.environ["CUDA_VISIBLE_DEVICES"] = use_gpu(0.3) 
+    os.environ["CUDA_VISIBLE_DEVICES"] = use_gpu(0.5) 
+    
+    if os.getenv("CUDA_VISIBLE_DEVICES") is None:
+        print("It is not a good time!")
+        sys.exit(-1)
+    
     os.environ["OLLAMA_MAX_LOADED_MODELS"] = '4'
     os.environ["OLLAMA_NUM_PARALLEL"] = '4'
     command = "ollama serve"

@@ -17,9 +17,8 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 
 class Jsonoutput(BaseModel):
     result: str = Field(description="whether vulnerability exists in following code, if exist answer 1, otherwise answer 0.")
-    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results and probability.") 
-    # description: str = Field(description="code vulnerability description")
-    probability: list = Field(description="probability ")
+    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results.") 
+    description: str = Field(description="code vulnerability description")
     
 def timeout_handler(signum, frame):
     raise TimeoutError('Model doesn\'t response for a while') 
@@ -52,7 +51,7 @@ def vector_embedding(page_content, conf):
     vectorstore = Chroma.from_documents(
         documents=md_header_splits,
         collection_name="rag-chroma",
-        embedding=OllamaEmbeddings(model=conf.embedding.model),
+        embedding=OllamaEmbeddings(base_url=conf.embedding.base_url, model=conf.embedding.model),
     )
     
     retriever = vectorstore.as_retriever()
@@ -120,7 +119,7 @@ def with_rag(model_local, code_content, retriever):
 
 
 def one_detection(func_value, target_value, retriever, conf):
-    model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx)
+    model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx, base_url=conf.analysis.base_url)
     
     code_content = remove_comments(func_value)
 
