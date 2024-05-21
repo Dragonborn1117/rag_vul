@@ -17,9 +17,12 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 
 class Jsonoutput(BaseModel):
     result: str = Field(description="whether vulnerability exists in following code, if exist answer 1, otherwise answer 0.")
-    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results, and star numbers if the answer is more probable.") 
+    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results, and give more star numbers if the answer is more probable.") 
     description: str = Field(description="code vulnerability description.")
 
+class Argueoutput(BaseModel):
+    result: str = Field(description="whether vulnerability exists in following code, if exist answer 1, otherwise answer 0.")
+    select_answer: str = Field(description="select the most probable answer from the result")
     
 def timeout_handler(signum, frame):
     raise TimeoutError('Model doesn\'t response for a while') 
@@ -79,6 +82,13 @@ def read_doc() -> str:
     
     return content
 
+def dict_slice(adict, start, end):
+    keys = adict.keys()
+    dict_slice = {}
+    for k in list(keys)[start:end]:
+        dict_slice[k] = adict[k]
+    return dict_slice
+
 def with_rag(model_local, code_content, retriever):
     parser = JsonOutputParser(pydantic_object=Jsonoutput)
                 
@@ -103,9 +113,10 @@ def with_rag(model_local, code_content, retriever):
     after_rag_chain = setup_and_retrieval | prompt | model_local | JsonOutputParser()
     after_rag_chain = after_rag_chain.with_retry()
     answer = after_rag_chain.invoke(question)
+    
     print(answer)
     
-    message = """1)if one reason describes code that does not exist in the provided input, it is not valid.
+    message = """1) If one reason describes code that does not exist in the provided input, it is not valid.
                  2) If one reason is not related to the code, the reason is not valid.
                  3) If this reason violates the facts, the reason is unreasonable.
                  4) If one reason is not related to the decision, the reason is not valid.
@@ -116,17 +127,24 @@ def with_rag(model_local, code_content, retriever):
                  9) The selected reason must be factual, logical and convincing.
                  10) Do not make any assumption out of the given code"""
     
-    #TODO: add a fuction to select the result
-    question = "You are an expert at finding vulnerability in code. Following the instrctions below, please select the most reasonable result from the {answer}.\n" + message
-    after_rag_prompt = ChatPromptTemplate.from_template(question)
-    after_rag_chain = after_rag_prompt| model_local | JsonOutputParser()
+    parser = JsonOutputParser(pydantic_object=Argueoutput)
+    
+    prompt = PromptTemplate(
+        template="""You are an expert at finding vulnerability in code\n{code}.\nYou are review the answer from your colleague just made. Following the instrctions below, please JUST select the most probable result from the {answer}.\n{message}\n
+        {format_instructions}\n.Think step by step""",
+        input_variables=["code", "answer", "message"],
+        partial_variables={"format_instructions": parser.get_format_instructions()},
+    )
+    
+    question = "You are an expert at finding vulnerability in code\n{code}.\nYou are review the answer from your colleague just made. Following the instrctions below, please JUST select the most probable result from the {answer}.\n" + message
+    after_rag_chain = prompt| model_local | parser
     after_rag_chain = after_rag_chain.with_retry()
-    answer = after_rag_chain.invoke({"answer": answer})
+    answer = after_rag_chain.invoke({"code": code_content, "answer": answer, "message": message})
     print(answer)
     
     after_test_result = r"results/after_rag_result.json"
     with open(after_test_result, "a") as f:
-        json.dump(answer, f, indent=4)
+        json.dump(answer, f, indent=2)
 
 
 def one_detection(func_value, target_value, retriever, conf):
