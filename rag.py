@@ -150,7 +150,7 @@ def with_rag(model_local, code_content, retriever):
         json.dump(answer, f, indent=4)
 
 def one_detection(func_value, target_value, retriever, conf):
-    model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx, base_url=conf.analysis.url)
+    model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx, base_url=conf.analysis.base_url)
     
     code_content = remove_comments(func_value)
 
@@ -172,7 +172,7 @@ def main(args):
         
     conf = OmegaConf.load(args.config)
     
-    model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx)
+    model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx, base_url=conf.analysis.base_url)
     
     signal.signal(signal.SIGALRM, timeout_handler)
 
