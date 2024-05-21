@@ -98,8 +98,6 @@ def with_rag(model_local, code_content, retriever):
         partial_variables={"format_instructions": parser.get_format_instructions()},
     )
     
-    after_rag_prompt = ChatPromptTemplate.from_template(message)
-    
     setup_and_retrieval = RunnableParallel(
         {
             "context": retriever,
@@ -111,6 +109,25 @@ def with_rag(model_local, code_content, retriever):
     after_rag_chain = setup_and_retrieval | prompt | model_local | JsonOutputParser()
     after_rag_chain = after_rag_chain.with_retry()
     answer = after_rag_chain.invoke(question)
+    print(answer)
+    
+    message = """1)if one reason describes code that does not exist in the provided input, it is not valid.
+                 2) If one reason is not related to the code, the reason is not valid.
+                 3) If this reason violates the facts, the reason is unreasonable.
+                 4) If one reason is not related to the decision, the reason is not valid.
+                 5) If one reason assume any information that is not provided, the reason is not valid.
+                 6) If the code is safe and one reason supports the decision, please check if the code has other potential vulnerabilities. If the code has other potential vulnerabilities, the reason is not valid.
+                 7) The selected reason should be the most relevant to the decision.
+                 8) The selected reason must be the most reasonable and accurate one.
+                 9) The selected reason must be factual, logical and convincing.
+                 10) Do not make any assumption out of the given code"""
+    
+    #TODO: add a fuction to select the result
+    question = "You are an expert at finding vulnerability in code. Following the instrctions below, please select the most reasonable result from the {answer}.\n" + message
+    after_rag_prompt = ChatPromptTemplate.from_template(question)
+    after_rag_chain = after_rag_prompt| model_local | JsonOutputParser()
+    after_rag_chain = after_rag_chain.with_retry()
+    answer = after_rag_chain.invoke({"answer": answer})
     print(answer)
     
     after_test_result = r"results/after_rag_result.json"
