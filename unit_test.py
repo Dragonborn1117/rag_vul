@@ -17,8 +17,9 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 
 class Jsonoutput(BaseModel):
     result: str = Field(description="whether vulnerability exists in following code, if exist answer 1, otherwise answer 0.")
-    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results.") 
-    description: str = Field(description="code vulnerability description")
+    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results, and star numbers if the answer is more probable.") 
+    description: str = Field(description="code vulnerability description.")
+
     
 def timeout_handler(signum, frame):
     raise TimeoutError('Model doesn\'t response for a while') 
@@ -80,13 +81,6 @@ def read_doc() -> str:
 
 def with_rag(model_local, code_content, retriever):
     parser = JsonOutputParser(pydantic_object=Jsonoutput)
-       
-    
-    message = """You are an expert at finding vulnerability in code. \
-                Given a question, return a list of ONLY THREE results optimized to retrieve the most relevant results. Respond with json.\
-                If there are acronyms or words you are not familiar with, do not try to rephrase them.
-                Answer the question based on the following context:{context} 
-                Question:{question}"""
                 
     prompt = PromptTemplate(
         template="""You are an expert at finding vulnerability in code. \
@@ -105,7 +99,7 @@ def with_rag(model_local, code_content, retriever):
         }
     )    
         
-    question = "What type of vulnerability exists in the following code?\n" + code_content
+    question = "What type of vulnerability exists in the following code?\n" + code_content + "Generate more star if you think the answer is more probable."
     after_rag_chain = setup_and_retrieval | prompt | model_local | JsonOutputParser()
     after_rag_chain = after_rag_chain.with_retry()
     answer = after_rag_chain.invoke(question)
