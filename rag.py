@@ -1,7 +1,7 @@
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings.ollama import OllamaEmbeddings
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_community.chat_models import ChatOllama
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -19,8 +19,8 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 
 class Jsonoutput(BaseModel):
     result: str = Field(description="whether vulnerability exists in following code, if exist answer 1, otherwise answer 0.")
-    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results.") 
-    description: str = Field(description="code vulnerability description")
+    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results, and star numbers if the answer is more probable.") 
+    description: str = Field(description="code vulnerability description.")
 
 def timeout_handler(signum, frame):
     raise TimeoutError('Model doesn\'t response for a while') 
@@ -103,6 +103,16 @@ def without_rag(model_local, code_content):
 def with_rag(model_local, code_content, retriever):
     parser = JsonOutputParser(pydantic_object=Jsonoutput)
     
+    prompt = PromptTemplate(
+        template="""You are an expert at finding vulnerability in code. \
+                Given a question, return a list of ONLY THREE results optimized to retrieve the most relevant results. Respond with json.\
+                If there are acronyms or words you are not familiar with, do not try to rephrase them.
+                Answer the question based on the following context:{context} 
+                Question:{question}\n{format_instructions}\n{question}\n.Think step by step""",
+        input_variables=["context","question"],
+        partial_variables={"format_instructions": parser.get_format_instructions()},
+    )
+    
     setup_and_retrieval = RunnableParallel(
         {
             "context": retriever,
@@ -110,17 +120,29 @@ def with_rag(model_local, code_content, retriever):
         }
     )       
     
-    message = """You are an expert at finding vulnerability in code. \
-                Given a question, return a list of ONLY FIVE results optimized to retrieve the most relevant results.
-                If there are acronyms or words you are not familiar with, do not try to rephrase them.
-                Answer the question based on the following context:{context} 
-                Question:{question}"""
-    after_rag_prompt = ChatPromptTemplate.from_template(message)
-    
     question = "What type of vulnerability exists in the following code?\n" + code_content
-    after_rag_chain = setup_and_retrieval | after_rag_prompt | model_local | parser
+    after_rag_chain = setup_and_retrieval | prompt | model_local | parser
     after_rag_chain = after_rag_chain.with_retry()
     answer = after_rag_chain.invoke(question)
+    print(answer)
+    
+    message = """1)if one reason describes code that does not exist in the provided input, it is not valid.
+                 2) If one reason is not related to the code, the reason is not valid.
+                 3) If this reason violates the facts, the reason is unreasonable.
+                 4) If one reason is not related to the decision, the reason is not valid.
+                 5) If one reason assume any information that is not provided, the reason is not valid.
+                 6) If the code is safe and one reason supports the decision, please check if the code has other potential vulnerabilities. If the code has other potential vulnerabilities, the reason is not valid.
+                 7) The selected reason should be the most relevant to the decision.
+                 8) The selected reason must be the most reasonable and accurate one.
+                 9) The selected reason must be factual, logical and convincing.
+                 10) Do not make any assumption out of the given code"""
+    
+    #TODO: add a fuction to select the result
+    question = "You are an expert at finding vulnerability in code. Following the instrctions below, please select the most reasonable result from the {answer}.\n" + message
+    after_rag_prompt = ChatPromptTemplate.from_template(question)
+    after_rag_chain = after_rag_prompt| model_local | JsonOutputParser()
+    after_rag_chain = after_rag_chain.with_retry()
+    answer = after_rag_chain.invoke({"answer": answer})
     print(answer)
     
     after_test_result = r"results/after_rag_result.json"
