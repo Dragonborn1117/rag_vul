@@ -16,13 +16,13 @@ import pandas as pd
 from langchain_core.pydantic_v1 import BaseModel, Field
 
 class Jsonoutput(BaseModel):
-    result: str = Field(description="whether vulnerability exists in following code, if exist answer 1, otherwise answer 0.")
-    type: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results, and give more star numbers if the answer is more probable.") 
-    description: str = Field(description="code vulnerability description.")
+    Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output Yes; otherwise, output No.")
+    Vulnerability_Assessment: list = Field(description="a list of ONLY THREE results optimized to retrieve the most relevant results of the code snippet, and give more star numbers if the answer is more probable.") 
+    Vulnerability_Location: str = Field(description="Provide a vulnerability location result for the vulnerable code snippet.") 
 
 class Argueoutput(BaseModel):
-    result: str = Field(description="whether vulnerability exists in following code, if exist answer 1, otherwise answer 0.")
-    select_answer: str = Field(description="select the most probable answer from the result")
+    Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output Yes; otherwise, output No.")
+    select_answer: str = Field(description="select the most probable answer from the Vulnerability_Assessment")
     
 def timeout_handler(signum, frame):
     raise TimeoutError('Model doesn\'t response for a while') 
@@ -43,9 +43,7 @@ def remove_comments(text):
 
 def vector_embedding(page_content, conf):
     headers_to_split_on = [
-        ("#", "Header 1"),
-        ("##", "Header 2"),
-        ("###", "Header 3"),
+        ("#", "Header 1")
     ]
     
     markdown_document = page_content
@@ -63,31 +61,16 @@ def vector_embedding(page_content, conf):
     return retriever
 
 def read_doc() -> str:
-    random_list = []
-    set_random_num = 1
     content = ''
-    doc_path = r"dataset/doc"
+    doc_path = r"dataset/doc/cwe_latest.md"
     
-    for doc in os.listdir(doc_path):
-        print(f"traverse documents {doc}...")
-        path = os.path.join(doc_path, doc)
-        random_list.append(path)
-        # random.shuffle(random_list)
-    
-    for i in range(set_random_num):
-        print(f"reading documents {random_list[i]}...")
-        with open(random_list[i], "r") as f:
-            page_content = f.read()
-            content += page_content
+    print(f"reading documents ...")
+    with open(doc_path, "r") as f:
+        page_content = f.read()
+        content += page_content
     
     return content
 
-def dict_slice(adict, start, end):
-    keys = adict.keys()
-    dict_slice = {}
-    for k in list(keys)[start:end]:
-        dict_slice[k] = adict[k]
-    return dict_slice
 
 def with_rag(model_local, code_content, retriever):
     parser = JsonOutputParser(pydantic_object=Jsonoutput)
@@ -115,6 +98,9 @@ def with_rag(model_local, code_content, retriever):
     answer = after_rag_chain.invoke(question)
     
     print(answer)
+    vulnerability_list = dict.get(answer, "Vulnerablitity_Assessment")
+    first_result = dict.get(answer, "Vulnerability_Detection")
+    #no dict slice, or raise error.
     
     message = """1) If one reason describes code that does not exist in the provided input, it is not valid.
                  2) If one reason is not related to the code, the reason is not valid.
@@ -147,7 +133,7 @@ def with_rag(model_local, code_content, retriever):
         json.dump(answer, f, indent=2)
 
 
-def one_detection(func_value, target_value, retriever, conf):
+def one_detection(func_value, retriever, conf):
     model_local = ChatOllama(model=conf.analysis.model, temperature=conf.analysis.temperature, format=conf.analysis.format, num_ctx=conf.analysis.num_ctx, base_url=conf.analysis.base_url)
     
     code_content = remove_comments(func_value)
@@ -177,20 +163,24 @@ def main(args):
     
     print("retrieve complete...")
     
-    data = []
-    with open('dataset/code/primevul_test.json', 'r') as file:
-        for line in file:
-            json_obj = json.loads(line)
-            data.append(json_obj)
+    # data = []
+    # with open('dataset/code/primevul_test.json', 'r') as file:
+    #     for line in file:
+    #         json_obj = json.loads(line)
+    #         data.append(json_obj)
 
-    df = pd.DataFrame(data)
+    # df = pd.DataFrame(data)
 
-    for index, row in df.iterrows():
-        target_value = row['target']
-        func_value = row['func']  
-        print(f"detecting {row['hash']}...")    
-        one_detection(func_value, target_value, retriever, conf)
-        break
+    # for index, row in df.iterrows():
+    #     target_value = row['target']
+    #     func_value = row['func']  
+    #     print(f"detecting {row['hash']}...")    
+    #     one_detection(func_value, retriever, conf)
+    #     break
+    with open("test.cpp", "r") as f:
+        code_content = f.read()
+    code_content = remove_comments(code_content)
+    one_detection(code_content, retriever, conf)
     
     print("test complete...")
 

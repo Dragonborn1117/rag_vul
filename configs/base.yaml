@@ -1,5 +1,5 @@
 analysis:
-  model: "mistral"
+  model: "llama3"
   temperature: 0
   format: "json"
   num_ctx: 8192
