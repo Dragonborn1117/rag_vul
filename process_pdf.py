@@ -13,13 +13,13 @@ pdf_file = open(filename, 'rb')
 reader = PyPDF2.PdfReader(pdf_file)
 text = ""
 
-for i in range(2, 18):
+for i in range(29, 30):
     
     page_num = i
     page = reader.pages[page_num]
     text += page.extract_text()
 
-text = re_compose_pdf(text)
+# text = re_compose_pdf(text)
 
 print('--------------------------------------------------')
 print(text)

@@ -11,9 +11,8 @@ import argparse
 from omegaconf import OmegaConf
 import json
 import re
-import os
-import pandas as pd
 from langchain_core.pydantic_v1 import BaseModel, Field
+from langchain_community.document_loaders import PyPDFLoader
 
 class Jsonoutput(BaseModel):
     Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output Yes; otherwise, output No.")
@@ -22,7 +21,8 @@ class Jsonoutput(BaseModel):
 
 class Argueoutput(BaseModel):
     Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output Yes; otherwise, output No.")
-    select_answer: str = Field(description="select the most probable answer from the Vulnerability_Assessment")
+    # select_answer: str = Field(description="select the most probable answer from the Vulnerability_Assessment")
+    select_answer: str = Field(description="whether a specific type of vulnerability exists in the code and summarizations")
     
 def timeout_handler(signum, frame):
     raise TimeoutError('Model doesn\'t response for a while') 
@@ -42,16 +42,21 @@ def remove_comments(text):
     return re.sub(pattern, replacer, text)   
 
 def vector_embedding(page_content, conf):
-    headers_to_split_on = [
-        ("#", "Header 1")
-    ]
+    pdf_flag = 0
+    if pdf_flag == 1:
+        splits = page_content
     
-    markdown_document = page_content
-    markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
-    md_header_splits = markdown_splitter.split_text(markdown_document)
+    else:
+        headers_to_split_on = [
+            ("#", "Header 1")
+        ]
+        
+        markdown_document = page_content
+        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+        splits = markdown_splitter.split_text(markdown_document)
 
     vectorstore = Chroma.from_documents(
-        documents=md_header_splits,
+        documents=splits,
         collection_name="rag-chroma",
         embedding=OllamaEmbeddings(base_url=conf.embedding.base_url, model=conf.embedding.model),
     )
@@ -60,7 +65,15 @@ def vector_embedding(page_content, conf):
     
     return retriever
 
+def read_pdf() -> str:
+    loader = PyPDFLoader("dataset/doc/cwe_latest.pdf")
+    pages = loader.load_and_split()
+    
+    return pages
+    
+
 def read_doc() -> str:
+    
     content = ''
     doc_path = r"dataset/doc/cwe_latest.md"
     
@@ -115,13 +128,22 @@ def with_rag(model_local, code_content, retriever):
     
     parser = JsonOutputParser(pydantic_object=Argueoutput)
     
+    query = "You are a code auditing expert. I will give you a code and some summarizations from other experts. Your task is to answer whether a specific type of vulnerability exists in the code and summarizations following the specific instrutions below.Here is the code:\n"
+    query += "{format_instructions}\n"
+    query += """{code}\n"""
+    query += "Summarizations:\n"
+    query += "{answer}"
+    query += "Instructions:\n"
+    query += "{message}\n"
+    
+    
     prompt = PromptTemplate(
-        template="""You are an expert at finding vulnerability in code\n{code}.\nYou are review the answer from your colleague just made. Following the instrctions below, please JUST select the most probable result from the {answer}.\n{message}\n
-        {format_instructions}\n.Think step by step""",
+        template = query,
         input_variables=["code", "answer", "message"],
         partial_variables={"format_instructions": parser.get_format_instructions()},
     )
     
+    #用过的prompt，记一下
     question = "You are an expert at finding vulnerability in code\n{code}.\nYou are review the answer from your colleague just made. Following the instrctions below, please JUST select the most probable result from the {answer}.\n" + message
     after_rag_chain = prompt| model_local | parser
     after_rag_chain = after_rag_chain.with_retry()
@@ -140,7 +162,6 @@ def one_detection(func_value, retriever, conf):
 
     try:
         signal.alarm(100)
-        
         with_rag(model_local, code_content, retriever)
         
     except Exception as e:
@@ -151,33 +172,24 @@ def main(args):
     if args.config == None:
         args.config = "configs/base.yaml"
     
-        
     conf = OmegaConf.load(args.config)
     
     signal.signal(signal.SIGALRM, timeout_handler)
     
-    page_content = read_doc()
+    
+    pdf_flag = 0
+    if pdf_flag == 1:
+        page_content = read_pdf()
+    else:
+        page_content = read_doc()
+        
     print("read docucments complete")
     
     retriever = vector_embedding(page_content, conf)
     
     print("retrieve complete...")
     
-    # data = []
-    # with open('dataset/code/primevul_test.json', 'r') as file:
-    #     for line in file:
-    #         json_obj = json.loads(line)
-    #         data.append(json_obj)
-
-    # df = pd.DataFrame(data)
-
-    # for index, row in df.iterrows():
-    #     target_value = row['target']
-    #     func_value = row['func']  
-    #     print(f"detecting {row['hash']}...")    
-    #     one_detection(func_value, retriever, conf)
-    #     break
-    with open("test.cpp", "r") as f:
+    with open("testcase/service.c", "r") as f:
         code_content = f.read()
     code_content = remove_comments(code_content)
     one_detection(code_content, retriever, conf)

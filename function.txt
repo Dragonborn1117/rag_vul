@@ -1,0 +1,3 @@
+MAXSIZE          macro        14 test.cpp         #define MAXSIZE 40
+main             function     45 test.cpp         main(int argc, char **argv)
+test             function     16 test.cpp         test(char *str1, char *str2)

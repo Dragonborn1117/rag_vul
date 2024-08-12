@@ -11,7 +11,7 @@ def timeout_handler(signum, frame):
 
 def calculated_reward(mutated_prompt:str) -> int:
     reward = 0
-    if mutated_prompt == 'mamba out':
+    if mutated_prompt == 'I am a human':
         reward = 1
     
     return reward
@@ -19,7 +19,7 @@ def calculated_reward(mutated_prompt:str) -> int:
     
 def mutated_prompt(conf) -> dict:
     model_local = ChatOllama(model=conf.mutation.model, temperature=conf.mutation.temperature, format=conf.mutation.format)
-    corpus = 'what can I say?'
+    corpus = 'who are you?'
     reward = 0
     num = 3
     
@@ -28,7 +28,7 @@ def mutated_prompt(conf) -> dict:
         print("mutating " + str(i))
         try:
             signal.alarm(100)
-            template = "Imaging you are Kobe Bryant.Paraphrase the sentence to another.Respond with json.{prompt_to_mutate}" 
+            template = "Imaging you are Human.Paraphrase the sentence to another.Respond with json.{prompt_to_mutate}" 
             prompt = ChatPromptTemplate.from_template(template)
             chain = prompt | model_local | JsonOutputParser()
             answer = chain.invoke({"prompt_to_mutate" : mutated_prompt})
@@ -45,8 +45,6 @@ def mutated_prompt(conf) -> dict:
             f.write(",\n")
             f.close()
   
-        
-        
         reward = calculated_reward(mutated_prompt)
         
         if reward == 1:
