@@ -18,6 +18,6 @@ void binary_sqrt(double x) {
 }
 
 int main() {
-    double x = 101;
+    double x = 100;
     binary_sqrt(x);
 }
