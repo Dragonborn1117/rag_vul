@@ -169,14 +169,13 @@ def one_detection(func_value, target_value, retriever, conf):
 
     try:
         signal.alarm(100)
-        #without_rag(model_local, code_content)
+        without_rag(model_local, code_content)
         
-        with_rag(model_local, code_content, retriever)
+        # with_rag(model_local, code_content, retriever)
         
     except Exception as e:
         signal.alarm(0)
         print(e)
-    
 
 def main(args):
     if args.config == None:

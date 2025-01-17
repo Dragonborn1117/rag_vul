@@ -1,6 +1,7 @@
 from langchain_text_splitters import MarkdownHeaderTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaEmbeddings, ChatOllama
+from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -16,6 +17,10 @@ from pydantic import BaseModel, Field
 from langchain_community.document_loaders import PyPDFLoader
 from fake_useragent import UserAgent
 import bs4
+import pandas as pd
+
+DEEPSEEK_API_KEY = "sk-243a8e31774e4f5dafaf38c564459d2a"
+OPENAI_API_KEY = "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"
 
 class Jsonoutput(BaseModel):
     Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output Yes; otherwise, output No.")
@@ -23,9 +28,8 @@ class Jsonoutput(BaseModel):
     Vulnerability_Location: str = Field(description="Provide a vulnerability location result for the vulnerable code snippet.") 
 
 class Argueoutput(BaseModel):
-    Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output Yes; otherwise, output No.")
+    Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output 1; otherwise, output 0.")
     # select_answer: str = Field(description="select the most probable answer from the Vulnerability_Assessment")
-    select_answer: str = Field(description="whether a specific type of vulnerability exists in the code and summarizations")
     
 class vul():
     def __init__(self, args):
@@ -34,7 +38,11 @@ class vul():
             
         self.conf = OmegaConf.load(args.config)
         self.retriever = None
-    
+        self.target_value = None
+        self.correct = 0
+        self.incorrect = 0 
+        self.num = 0
+
     def timeout_handler(signum, frame):
         raise TimeoutError('Model doesn\'t response for a while') 
 
@@ -91,6 +99,87 @@ class vul():
         vectorstore = Chroma.from_documents(documents=splits, embedding=OllamaEmbeddings(base_url="http://localhost:8080", model="bge-m3"))
         
         self.retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 6})
+    
+    def with_out_rag(self, model_local, code_content):
+        parser = JsonOutputParser(pydantic_object=Jsonoutput)
+        
+        # """You are an expert at finding vulnerability in code. \
+        #             Given a question, return a list of ONLY THREE results optimized to retrieve the most relevant results. Respond with json.\
+        #             If there are acronyms or words you are not familiar with, do not try to rephrase them.
+        #             Answer the question based on the following context:{context} 
+        #             Question:{question}\n{format_instructions}\n{question}\n.Think step by step""",
+                    
+        prompt = PromptTemplate(
+            template="""You are an expert at finding vulnerability in code. \
+                    Given a question, return a list of ONLY THREE results optimized to retrieve the most relevant results. Respond with json.\
+                    If there are acronyms or words you are not familiar with, do not try to rephrase them.
+                    Question:{question}\n{format_instructions}\n{question}\n.Think step by step""",
+            input_variables=["question"],
+            partial_variables={"format_instructions": parser.get_format_instructions()},
+        )
+        
+        setup_and_retrieval = RunnableParallel(
+            {
+                "question": RunnablePassthrough()
+            }
+        )    
+            
+        question = "What type of vulnerability exists in the following code?\n" + code_content + "Generate more star if you think the answer is more probable."
+        after_rag_chain = setup_and_retrieval | prompt | model_local | JsonOutputParser()
+        after_rag_chain = after_rag_chain.with_retry()
+        answer = after_rag_chain.invoke(question)
+        
+        print(answer)
+        
+        message = """DO NOT think such \"Data Leakage Vulnerability\", \"Data Exposure Vulnerability\", \"Insecure Encryption\" and \"Missing input validation\" are vulnerable. If your colleague mentions it. JUST DENY THEM."""
+        
+        parser = JsonOutputParser(pydantic_object=Argueoutput)
+        
+        query = "You are a code auditing expert. You are review the answer from your colleague just made. Remember your colleague tends to exaggerate results and has provided some false positive cases. Your task is to answer whether a specific type of vulnerability exists in the code and summarizations following the specific instrutions below.Here is the code:\n"
+        query += "{format_instructions}\n"
+        query += """{code}\n"""
+        query += "Summarizations:\n"
+        query += "{answer}"
+        query += "Instructions:\n"
+        query += "{message}\n"
+        
+        
+        prompt = PromptTemplate(
+            template = query,
+            input_variables=["code", "answer", "message"],
+            partial_variables={"format_instructions": parser.get_format_instructions()},
+        )
+        
+        #用过的prompt，记一下
+        question = "You are an expert at finding vulnerability in code\n{code}.\nYou are review the answer from your colleague just made. Following the instrctions below, please JUST select the most probable result from the {answer}.\n" + message
+        after_rag_chain = prompt| model_local | parser
+        after_rag_chain = after_rag_chain.with_retry()
+        answer = after_rag_chain.invoke({"code": code_content, "answer": answer, "message": message})
+        print(answer)
+        self.num += 1
+        
+        try:        
+            res = answer.get("Vulnerability_Detection") 
+            if res == "Yes":
+                res = "1"
+                
+            elif res == "No":
+                res = "0"
+                
+            if res == str(self.target_value):
+                print("correct!")
+                self.correct += 1 
+            
+            else: 
+                print("incorrect!")
+                self.incorrect += 1             
+        
+        except Exception as e:
+            print("incorrect format answer")
+        
+        after_test_result = r"results/before_rag_result.json"
+        with open(after_test_result, "a") as f:
+            json.dump(answer, f, indent=2)
     
     def with_rag(self, model_local, code_content):
         parser = JsonOutputParser(pydantic_object=Jsonoutput)
@@ -167,14 +256,28 @@ class vul():
         with open(after_test_result, "a") as f:
             json.dump(answer, f, indent=2)
 
-    def one_detection(self, func_value):
+    def one_detection(self, func_value, target_value):
+        self.target_value = target_value
         model_local = ChatOllama(model=self.conf.analysis.model, temperature=self.conf.analysis.temperature, format=self.conf.analysis.format, num_ctx=self.conf.analysis.num_ctx, base_url=self.conf.analysis.base_url)
         
+        llm = ChatOpenAI(
+            model="deepseek-chat", 
+            api_key=DEEPSEEK_API_KEY, 
+            base_url="https://api.deepseek.com",
+            temperature=0.0
+        )      
+        # llm = ChatOpenAI(
+        #     model="gpt-4o", 
+        #     api_key=OPENAI_API_KEY,
+        #     base_url="https://api.openai.com/v1",
+        #     temperature=0.0
+        # )
+
         code_content = self.remove_comments(func_value)
 
         try:
             signal.alarm(100)
-            self.with_rag(model_local, code_content)
+            self.with_out_rag(llm, code_content)
             
         except Exception as e:
             signal.alarm(0)
@@ -184,16 +287,34 @@ class vul():
         
         signal.signal(signal.SIGALRM, self.timeout_handler)
 
-        self.vector_embedding()
+        # self.vector_embedding()
         
-        print("retrieve complete...")
+        # print("retrieve complete...")
         
-        with open("testcase/target0.c", "r") as f:
-            code_content = f.read()
-        code_content = self.remove_comments(code_content)
+        data = []
+        with open('dataset/MSR_data_cleaned_json/MSR_data_cleaned.json', 'r', encoding='utf-8') as file:
+            # 只读取前 1000 个字节
+            partial_content = file.read(1001941)
+            partial_content += "\n}"
+
+        # print(partial_content)
+        data = json.loads(partial_content)
+
+        # 转换为 pandas DataFrame
+        df = pd.DataFrame.from_dict(data, orient='index')
         
-        self.one_detection(code_content)
-        
+        flag = 0
+        for index, row in df.iterrows():
+            if flag == 20:
+                break
+            target_value = row['vul']
+            func_value = row['func_before']  
+            print(f"detecting {flag}...")    
+            self.one_detection(func_value, target_value)  
+            flag += 1
+        print("correct: {}".format(self.correct))
+        print("incorrect: {}".format(self.incorrect))
+        print("total: {}".format(self.num))
         print("test complete...")
 
 if __name__ == "__main__":

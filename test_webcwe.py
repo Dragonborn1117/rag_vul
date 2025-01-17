@@ -28,9 +28,10 @@ def add_mark_text(text):
     
 
 # Only keep post title, headers, and content from the full HTML.
-bs4_strainer = bs4.SoupStrainer(id=("Description", "Extended_Description", "Alternate_Terms", "Demonstrative_Examples"))
+# bs4_strainer = bs4.SoupStrainer(id=("Description", "Extended_Description", "Alternate_Terms", "Demonstrative_Examples"))
+bs4_strainer = bs4.SoupStrainer(id=("Summary", "Vulnerability_Mapping_Notes"))
 loader = WebBaseLoader(
-    web_paths=("https://cwe.mitre.org/data/definitions/119.html",),
+    web_paths=("https://cwe.mitre.org/data/definitions/399.html",),
     bs_kwargs={"parse_only": bs4_strainer},
 )
 
@@ -42,7 +43,7 @@ for doc in docs:
     print(cleaned_content)
 
 
-llm = ChatOllama(model="llama3.1", temperature=0, format="json", num_ctx=8192, base_url="http://localhost:8080")
+# llm = ChatOllama(model="llama3.1", temperature=0, format="json", num_ctx=8192, base_url="http://localhost:8080")
 headers_to_split_on = [
     ("#", "Header 1")
 ]
@@ -52,24 +53,24 @@ splits = markdown_splitter.split_text(cleaned_content)
 for i, chunk in enumerate(splits, 1):
     print(f"块 {i}:\n{chunk.page_content}\n{'-' * 50}")
 
-vectorstore = Chroma.from_documents(documents=splits, embedding=OllamaEmbeddings(base_url="http://localhost:8080", model="bge-m3"))
+# vectorstore = Chroma.from_documents(documents=splits, embedding=OllamaEmbeddings(base_url="http://localhost:8080", model="bge-m3"))
 
-# Retrieve and generate using the relevant snippets of the blog.
-retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 6})
-retrieved_docs = retriever.invoke("What is CWE-119")
-print(retrieved_docs[0].page_content)
-prompt = hub.pull("rlm/rag-prompt")
-
-
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+# # Retrieve and generate using the relevant snippets of the blog.
+# retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 6})
+# retrieved_docs = retriever.invoke("What is CWE-119")
+# print(retrieved_docs[0].page_content)
+# prompt = hub.pull("rlm/rag-prompt")
 
 
-rag_chain = (
-    {"context": retriever | format_docs, "question": RunnablePassthrough()}
-    | prompt
-    | llm
-    | StrOutputParser()
-)
+# def format_docs(docs):
+#     return "\n\n".join(doc.page_content for doc in docs)
 
-print(rag_chain.invoke("What is CWE-119"))
+
+# rag_chain = (
+#     {"context": retriever | format_docs, "question": RunnablePassthrough()}
+#     | prompt
+#     | llm
+#     | StrOutputParser()
+# )
+
+# print(rag_chain.invoke("What is CWE-119"))
