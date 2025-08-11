@@ -19,8 +19,8 @@ from fake_useragent import UserAgent
 import bs4
 import pandas as pd
 
-DEEPSEEK_API_KEY = "sk-243a8e31774e4f5dafaf38c564459d2a"
-OPENAI_API_KEY = "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"
+DEEPSEEK_API_KEY = ""
+OPENAI_API_KEY = ""
 
 class Jsonoutput(BaseModel):
     Vulnerability_Detection: str = Field(description="If this code snippet has vulnerabilities, output Yes; otherwise, output No.")
